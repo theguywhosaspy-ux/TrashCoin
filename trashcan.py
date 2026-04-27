@@ -40,7 +40,7 @@ class Trashcan:
     
     def __init__(self, can_id: str, location: str) -> None:
         self.can_id: str = can_id
-        self.mcast_grp: str = "192.168.1.117"
+        self.mcast_grp: str = "239.255.0.1"
         self.mcast_prt: int = 5007
         self.student_id: str | None = None
         self.trash_ct: int = 0 
