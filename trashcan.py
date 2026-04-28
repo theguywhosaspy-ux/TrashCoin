@@ -172,7 +172,7 @@ class Trashcan:
                 self.admin_lock = False
                 
             case TrashCanState.READER_STANDBY:
-                if self.count < 60:
+                if self.count < 120:
                     self.__read_id()
                     if self.student_id:
                         self.__check_custodian()
