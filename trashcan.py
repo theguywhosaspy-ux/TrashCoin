@@ -168,6 +168,7 @@ class Trashcan:
                 self.dist = self.last_dist
                 self.student_id = None
                 self.trash_ct = 0
+                self.count = 0
                 self.state = TrashCanState.READER_STANDBY
                 self.admin_lock = False
                 
@@ -180,7 +181,8 @@ class Trashcan:
                             self.state = TrashCanState.CUSTODIAN
                         else:
                             self.state = TrashCanState.OPEN_CAN
-                    self.count += 1
+                    else:
+                        self.count += 1
                     time.sleep(0.5)  
                 else:
                     self.count = 0 
@@ -231,6 +233,8 @@ class Trashcan:
                             self.state = TrashCanState.INIT_CAN
                             
             case TrashCanState.POST_STATUS:
+                self.student_id = None
+                self.trash_ct = 0
                 self.__get_distance()
                 if self.dist >= 2.7 and self.dist < 10:
                     self.full = True
