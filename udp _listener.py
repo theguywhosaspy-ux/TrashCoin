@@ -1,7 +1,7 @@
 import socket
 import struct
 import json
-
+from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 MCAST_GRP = '239.255.0.1'
 MCAST_PORT = 5007
 
@@ -27,7 +27,21 @@ while True:
         data, addr = sock.recvfrom(1024)
         
         # 5. Decode and parse JSON
-        json_data = json.loads(data.decode('utf-8'))
+        
+        
+        
+        with open("chacha.key", "rb") as key_file:
+            loaded_key = key_file.read()
+        print(len(loaded_key))
+        chacha = ChaCha20Poly1305(loaded_key)
+        nonce = data[:12]
+        ci_text = data[12:]
+
+        decrypt_data = chacha.decrypt(nonce, ci_text, None)
+    
+        
+        
+        json_data = json.loads(decrypt_data.decode('utf-8'))
         print(f"Received from {addr}: {json_data}")
         
     except json.JSONDecodeError:

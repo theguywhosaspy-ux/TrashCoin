@@ -2,10 +2,10 @@ from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 import os
 
 
-with open("chacha.ppk", "wb") as key_file:
+with open("chacha.key", "wb") as key_file:
     key_file.write(ChaCha20Poly1305.generate_key() )
     
-with open("chacha.ppk", "rb") as key_file:
+with open("chacha.key", "rb") as key_file:
     loaded_key = key_file.read()
 
 chacha = ChaCha20Poly1305(loaded_key)

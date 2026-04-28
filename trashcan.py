@@ -1,7 +1,9 @@
 import RPi.GPIO as GPIO
 
 from mfrc522 import SimpleMFRC522
+from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
+import os
 import time 
 import math
 import socket
@@ -14,6 +16,7 @@ TRIG = 23
 ECHO = 24
 PIN = 5
 TTL = 1
+CUSTODIAN = "custodian"
 
 class TrashCanState(Enum):
     """Trash Can State Enum Class"""
@@ -24,14 +27,16 @@ class TrashCanState(Enum):
     CLOSE_CAN = 4 
     GENERATE_TOKEN = 5   
     SEND_TOKEN = 6
+    CUSTODIAN = 7
+    POST_STATUS = 8
     
 class TrashPayload:
-    def __init__(self,device:str , location: str |None, student_id: str | None, trash_count: int | None, key: str | None) -> None:
+    def __init__(self,device:str , location: str |None, student_id: str | None, trash_count: int | None, full:bool) -> None:
         self.device:str  = device
         self.location: str | None = location
         self.student_id: str | None = student_id
         self.trash_count: int | None = trash_count
-        self.key: str |  None = key
+        self.full: bool = full
         self.time_stamp : float = time.time()
 
 class Trashcan:
@@ -49,13 +54,16 @@ class Trashcan:
         self.open: bool = False
         self.end_time: float = 0.0
         self.dist: float = 0
-        self.last_dist: float = 100
+        self.last_dist: float = 0
         self.reader = SimpleMFRC522()
         self.state: TrashCanState  = TrashCanState.INIT_CAN 
-        self.key: str ="jsfekliajf390423klj43n3kj2ln4"
         self.msg: dict = {}
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         self.sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, TTL)
+        self.admin_lock: bool =False
+        self.full: bool = False
+        self.count: int = 0
+        
         
     def __get_distance(self):
         try:
@@ -94,12 +102,28 @@ class Trashcan:
         self.last_dist = self.dist
 
     def __generate_message(self):
-        data = TrashPayload(self.can_id, self.location, self.student_id, self.trash_ct, self.key)
+        data = TrashPayload(self.can_id, self.location, self.student_id, self.trash_ct, self.full)
         self.msg = data.__dict__
     
+    
+    def __encrypt_message(self, data:bytes):
+        with open("chacha.key", "rb") as key_file:
+            loaded_key = key_file.read()
+
+        chacha = ChaCha20Poly1305(loaded_key)
+        nonce = os.urandom(12)
+        ci_text= chacha.encrypt(nonce ,data, None)
+        payload = nonce + ci_text
+           
+        return payload
+        
+    
     def __send_message(self):
+        
+        
         message = json.dumps(self.msg).encode('utf-8')
-        self.sock.sendto(message, (self.mcast_grp, self.mcast_prt))
+        payload = self.__encrypt_message(message)
+        self.sock.sendto(payload, (self.mcast_grp, self.mcast_prt))
 
         
     
@@ -125,30 +149,48 @@ class Trashcan:
         self.open = False
         
     def __read_id(self):
-            _, self.student_id = self.reader.read()
-            self.student_id = self.student_id.strip()
+        id, text = self.reader.read_no_block()
+        if id is not None:
+            self.student_id = text.strip()
             print(f"\nHello student: {self.student_id}")
+        else:
+            self.student_id = None
 
-            
+    def __check_custodian(self):
+        if self.student_id == CUSTODIAN:
+            self.admin_lock = not self.admin_lock
+
+    
     def trashcan_run(self):
         match self.state:
             
             case TrashCanState.INIT_CAN:
+                self.dist = self.last_dist
                 self.student_id = None
                 self.trash_ct = 0
                 self.state = TrashCanState.READER_STANDBY
-            
+                self.admin_lock = False
+                
             case TrashCanState.READER_STANDBY:
-                self.__read_id()
-                if self.student_id:
-                    self.state = TrashCanState.OPEN_CAN
-
+                if self.count < 60:
+                    self.__read_id()
+                    if self.student_id:
+                        self.__check_custodian()
+                        if self.admin_lock:
+                            self.state = TrashCanState.CUSTODIAN
+                        else:
+                            self.state = TrashCanState.OPEN_CAN
+                    self.count += 1
+                    time.sleep(0.5)  
+                else:
+                    self.count = 0 
+                    self.state = TrashCanState.POST_STATUS
 
             case TrashCanState.OPEN_CAN:
+                self. end_time = time.time() + 2.0
+                self.state = TrashCanState.DETECT_TRASH
                 self.open_can()
                 self.open = True
-                self. end_time = time.time() + 5.0
-                self.state = TrashCanState.DETECT_TRASH
                 GPIO.cleanup()
             
             case TrashCanState.DETECT_TRASH:
@@ -173,7 +215,29 @@ class Trashcan:
             case TrashCanState.SEND_TOKEN:
                 self.__send_message()
                 self.state = TrashCanState.INIT_CAN
-            
+                
+            case TrashCanState.CUSTODIAN:
+                if not self.open:
+                    self.open_can()
+                    self.open = True
+                    GPIO.cleanup()
+                if self.open:
+                    self.__read_id()
+                    if self.student_id:
+                        self.__check_custodian()
+                        if not self.admin_lock:
+                            self.close_can()
+                            self.open = False
+                            self.state = TrashCanState.INIT_CAN
+                            
+            case TrashCanState.POST_STATUS:
+                self.__get_distance()
+                if self.dist >= 2.7 and self.dist < 10:
+                    self.full = True
+                self.__generate_message()
+                self.__send_message()
+                self.full = False
+                self.state = TrashCanState.READER_STANDBY
             
 Can_One = Trashcan("can-1", "Stingers")
 
