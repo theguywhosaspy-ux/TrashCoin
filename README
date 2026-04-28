@@ -1,0 +1,6 @@
+This code is split into two main files with a seperate html file for the dashboard.
+Included is also a key_gen.py for new users to the trashcoin system to setup a key pair as well as a udp_listner to see decrypted messages for debugging!
+The trashcan.py is deployed to the iot device and is run as a service.
+Trashcan.py sends messages via udp multicast and is encypted via ChaCha20Poly1305 with a nonce for added secuity and authentication. Hash's of the transactions are also saved to a sqlite db for display in the dashboard.
+UDP multicast is utilized so regardless of the number of validators on a network they all should recieve the messages from the iot devices. This also reduces enegery tcp would add due to the 3-way-handshakes.
+The validator is run on on a validator device which hosts a dashboard locally to display transactions, status of cans, and number of coins generated per student.

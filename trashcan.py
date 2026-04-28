@@ -60,9 +60,10 @@ class Trashcan:
         self.msg: dict = {}
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         self.sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, TTL)
-        self.admin_lock: bool =False
-        self.full: bool = False
+        self.admin_lock: bool = False
         self.count: int = 0
+        self._last_rfid: str | None = None
+        self._last_rfid_time: float = 0.0
         
         
     def __get_distance(self):
@@ -71,25 +72,36 @@ class Trashcan:
             GPIO.setup(TRIG, GPIO.OUT)
             GPIO.setup(ECHO, GPIO.IN)
             time.sleep(0.2)
-            # Ensure Trigger is low
+
             GPIO.output(TRIG, False)
             time.sleep(0.000002)
 
-            # Trigger pulse (10 microseconds)
+     
             GPIO.output(TRIG, True)
             time.sleep(0.00001)
             GPIO.output(TRIG, False)
-            # Measure echo time
-            
+
+
+            pulse_start = time.time()
+            pulse_end = pulse_start
+            timeout = pulse_start + 0.04
+
             while GPIO.input(ECHO) == 0:
                 pulse_start = time.time()
+                if pulse_start > timeout:
+                    print("Ultrasonic timeout waiting for echo start")
+                    return
             while GPIO.input(ECHO) == 1:
                 pulse_end = time.time()
+                if pulse_end > timeout:
+                    print("Ultrasonic timeout waiting for echo end")
+                    return
 
             duration = pulse_end - pulse_start
             distance = (duration * 34300) / 2 
             self.dist = round(distance, 2)
-        except:
+        except Exception as e:
+            print(f"Distance sensor error: {e}")
             GPIO.cleanup()
     
     def check_for_trash(self):
@@ -128,8 +140,8 @@ class Trashcan:
         
     
     def __SetAngle(self, angle:int):
+        GPIO.cleanup()
         GPIO.setmode(GPIO.BOARD)
-
         GPIO.setup(PIN, GPIO.OUT)
         pwm=GPIO.PWM(PIN, 50)
         pwm.start(0)
@@ -139,6 +151,7 @@ class Trashcan:
         time.sleep(1)
         GPIO.output(PIN,False)
         pwm.ChangeDutyCycle(0)
+        pwm.stop()
         
     def open_can(self):
         self.__SetAngle(180)
@@ -149,9 +162,17 @@ class Trashcan:
         self.open = False
         
     def __read_id(self):
+        DEBOUNCE_SEC = 5.0
         id, text = self.reader.read_no_block()
         if id is not None:
-            self.student_id = text.strip()
+            card_id = text.strip()
+            now = time.time()
+            if card_id == self._last_rfid and (now - self._last_rfid_time) < DEBOUNCE_SEC:
+                self.student_id = None
+                return
+            self._last_rfid = card_id
+            self._last_rfid_time = now
+            self.student_id = card_id
             print(f"\nHello student: {self.student_id}")
         else:
             self.student_id = None
@@ -245,10 +266,18 @@ class Trashcan:
             
 Can_One = Trashcan("can-1", "Stingers")
 
-while True:
-    try:
-        Can_One.trashcan_run()
-        print("\n" , Can_One.state)
-    except:
-        print("\ncleaning up")
-        GPIO.cleanup()
+try:
+    while True:
+        try:
+            Can_One.trashcan_run()
+            print("\n" , Can_One.state)
+        except KeyboardInterrupt:
+            raise
+        except Exception as e:
+            print(f"\nError in state {Can_One.state}: {e}")
+            Can_One.state = TrashCanState.INIT_CAN
+            GPIO.cleanup()
+finally:
+    print("\nShutting down — cleaning up GPIO")
+    GPIO.cleanup()
+    Can_One.sock.close()
