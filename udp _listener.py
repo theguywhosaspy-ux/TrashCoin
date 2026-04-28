@@ -29,13 +29,10 @@ def mint(num_trash: int):
 
 while True:
     try:
-        # Receive data
+
         data, addr = sock.recvfrom(1024)
         
-        # 5. Decode and parse JSON
-        
-        
-        
+
         with open("chacha.key", "rb") as key_file:
             loaded_key = key_file.read()
             
