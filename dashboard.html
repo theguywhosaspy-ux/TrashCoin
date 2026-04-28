@@ -114,14 +114,14 @@
   }
 
   /* ── table ── */
-  .tbl-wrap{overflow-x:auto;flex:1}
+  .tbl-wrap{overflow-x:auto;overflow-y:auto;max-height:420px;flex:1}
   table{width:100%;border-collapse:collapse;font-size:.8rem}
   th{
     text-align:left;padding:.65rem 1rem;
     font-family:var(--mono);font-size:.65rem;font-weight:600;
     text-transform:uppercase;letter-spacing:.07em;
     color:var(--text-dim);background:var(--surface2);
-    position:sticky;top:0;
+    position:sticky;top:0;z-index:1;
   }
   td{
     padding:.6rem 1rem;border-top:1px solid var(--border);
